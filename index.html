@@ -621,9 +621,9 @@
             static displayTrend(data) {
                 if (data.length < 2) return;
                 
-                // Get data from last 4 hours
-                const fourHoursAgo = Date.now() - (4 * 60 * 60 * 1000);
-                const recent = data.filter(d => d.timestamp >= fourHoursAgo);
+                // Get data from last 12 hours
+                const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
+                const recent = data.filter(d => d.timestamp >= twelveHoursAgo);
                 
                 if (recent.length < 2) return;
                 
@@ -642,7 +642,7 @@
                 
                 document.getElementById('trendIndicator').innerHTML = trendHTML;
                 
-                // Create 4-hour chart
+                // Create 12-hour chart
                 this.create4HourChart(recent);
             }
 
@@ -652,6 +652,8 @@
                 if (window.chart4h && typeof window.chart4h.destroy === 'function') {
                     window.chart4h.destroy();
                 }
+                
+                // Display trailing 12-hour data
                 
                 const labels = data.map(d => {
                     const time = new Date(d.timestamp);
