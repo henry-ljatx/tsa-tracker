@@ -465,6 +465,52 @@
         };
 
         // ============================================================================
+        // Email Alert Service
+        // ============================================================================
+        class EmailAlertService {
+            static backendUrl = 'https://tsa-email-backend.onrender.com'; // Update when deployed
+            static lastAlertTime = 0;
+            static alertCooldown = 15 * 60 * 1000; // 15 minutes
+
+            static async sendAlert(waitTime, threshold) {
+                const now = Date.now();
+                
+                // Prevent sending alerts too frequently
+                if (now - this.lastAlertTime < this.alertCooldown) {
+                    console.log('Alert cooldown active - will retry in ' + Math.ceil((this.alertCooldown - (now - this.lastAlertTime)) / 60000) + ' minutes');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${this.backendUrl}/alert`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            waitTime: Math.round(waitTime),
+                            threshold: Math.round(threshold),
+                            recipientEmail: 'lance@ljatx.com'
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.alerted) {
+                            this.lastAlertTime = now;
+                            console.log('✅ Alert email sent successfully');
+                        } else {
+                            console.log('⏳ Alert cooldown active:', data.nextAlertIn);
+                        }
+                    } else {
+                        console.log('⚠️ Alert service returned error:', response.status);
+                    }
+                } catch (error) {
+                    console.log('ℹ️ Email alert service unavailable (not critical)');
+                    // Non-critical error - app continues to function
+                }
+            }
+        }
+
+        // ============================================================================
         // Storage Manager
         // ============================================================================
         class StorageManager {
@@ -876,6 +922,9 @@
                     `;
                     notification.classList.add('show');
                     setTimeout(() => notification.classList.remove('show'), 5000);
+                    
+                    // Send email alert via backend (non-blocking)
+                    EmailAlertService.sendAlert(waitTime, settings.alertThreshold);
                 }
             }
         }
