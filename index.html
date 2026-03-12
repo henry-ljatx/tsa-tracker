@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUS TSA Wait Times - Austin Bergstrom</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666;
+            --border-color: #e0e0e0;
+            --accent: #0066cc;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --chart-bg: rgba(0, 102, 204, 0.1);
+        }
+
+        body.dark-mode {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --text-primary: #e0e0e0;
+            --text-secondary: #999;
+            --border-color: #444;
+            --chart-bg: rgba(100, 150, 255, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+            padding: 0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        button.active {
+            background-color: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .current-status {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 768px) {
+            .current-status {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .wait-time-display {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .wait-time-number {
+            font-size: 48px;
+            font-weight: 700;
+            min-width: 140px;
+        }
+
+        .wait-time-number.green { color: var(--success); }
+        .wait-time-number.yellow { color: var(--warning); }
+        .wait-time-number.red { color: var(--danger); }
+
+        .wait-time-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .wait-time-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .time-period {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .severity-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .trend {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 600;
+        }
+
+        .trend.up { color: var(--danger); }
+        .trend.down { color: var(--success); }
+        .trend.stable { color: var(--warning); }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .last-updated {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 12px;
+        }
+
+        .weekly-history {
+            margin-bottom: 24px;
+        }
+
+        .weekly-history h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .day-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+
+        .day-item:hover {
+            background-color: var(--bg-primary);
+            border-color: var(--accent);
+        }
+
+        .day-label {
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        .day-time {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .day-wait-time {
+            font-size: 20px;
+            font-weight: 700;
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .day-wait-time.green { color: var(--success); }
+        .day-wait-time.yellow { color: var(--warning); }
+        .day-wait-time.red { color: var(--danger); }
+
+        .peak-analysis {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .analysis-card {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .analysis-card h3 {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .analysis-card-content {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .analysis-card-detail {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .export-section {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .notification {
+            padding: 12px 16px;
+            background-color: var(--warning);
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: none;
+            animation: slideIn 0.3s;
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .footer {
+            text-align: center;
+            padding: 24px 0;
+            border-top: 1px solid var(--border-color);
+            margin-top: 40px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .search-airports {
+            margin-bottom: 24px;
+        }
+
+        .airport-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .airport-btn {
+            padding: 10px 16px;
+            border: 2px solid var(--border-color);
+            background-color: transparent;
+            color: var(--text-primary);
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .airport-btn.selected {
+            background-color: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .airport-btn:hover {
+            border-color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>✈️ AUS TSA Wait Times</h1>
+                <p style="font-size: 14px; color: var(--text-secondary); margin-top: 4px;">Austin Bergstrom International Airport</p>
+            </div>
+            <div class="header-controls">
+                <button id="refreshBtn" onclick="refreshData()">🔄 Refresh</button>
+                <button id="darkModeBtn" onclick="toggleDarkMode()">🌙 Dark</button>
+            </div>
+        </header>
+
+        <div class="search-airports" style="display: none;">
+            <h3 style="margin-bottom: 12px;">Compare Airports</h3>
+            <div class="airport-selector">
+                <button class="airport-btn selected" data-airport="AUS">AUS (Austin)</button>
+                <button class="airport-btn" data-airport="DAL">DAL (Dallas)</button>
+                <button class="airport-btn" data-airport="HOU">HOU (Houston)</button>
+                <button class="airport-btn" data-airport="SAT">SAT (San Antonio)</button>
+            </div>
+        </div>
+
+        <div class="notification" id="notification"></div>
+
+        <div class="current-status">
+            <div>
+                <div class="wait-time-label">Current Wait Time</div>
+                <div class="wait-time-display">
+                    <div class="wait-time-number" id="currentWaitTime">—</div>
+                    <div class="wait-time-info">
+                        <div class="time-period" id="timePeriod">Loading...</div>
+                        <div class="severity-indicator" id="severityIndicator"></div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="wait-time-label">4-Hour Trend</div>
+                <div class="trend" id="trendIndicator" style="font-size: 24px; margin-top: 8px;">
+                    <span>—</span>
+                </div>
+                <div class="last-updated" id="lastUpdated"></div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="chart4h"></canvas>
+        </div>
+
+        <div class="peak-analysis">
+            <div class="analysis-card">
+                <h3>Peak Hour</h3>
+                <div class="analysis-card-content" id="peakHour">—</div>
+                <div class="analysis-card-detail" id="peakHourWait"></div>
+            </div>
+            <div class="analysis-card">
+                <h3>Peak Day</h3>
+                <div class="analysis-card-content" id="peakDay">—</div>
+                <div class="analysis-card-detail" id="peakDayWait"></div>
+            </div>
+            <div class="analysis-card">
+                <h3>Average Wait Time</h3>
+                <div class="analysis-card-content" id="avgWaitTime">—</div>
+                <div class="analysis-card-detail">Last 7 days</div>
+            </div>
+        </div>
+
+        <div class="weekly-history">
+            <h2>📅 Last 7 Days</h2>
+            <div id="weeklyHistoryContainer"></div>
+        </div>
+
+        <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+            <h3 style="margin-bottom: 12px;">⚙️ Settings</h3>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="alertsEnabled" checked onchange="saveSettings()">
+                    <span>Enable Wait Time Alerts</span>
+                </label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="alertThreshold">Alert when wait time exceeds:</label>
+                    <input type="number" id="alertThreshold" value="45" min="10" max="120" onchange="saveSettings()" style="width: 60px; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--bg-primary); color: var(--text-primary);">
+                    <span>minutes</span>
+                </div>
+            </div>
+            <button onclick="exportData()" style="margin-top: 12px;">📥 Export Data as CSV</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Data updates every 5 minutes | Historical data stored locally | Last synced: <span id="footerTime">—</span></p>
+        <p style="margin-top: 8px;">Realistic simulation • For demo purposes</p>
+    </div>
+
+    <script>
+        // ============================================================================
+        // Configuration
+        // ============================================================================
+        const CONFIG = {
+            currentAirport: 'AUS',
+            dataRefreshInterval: 5 * 60 * 1000, // 5 minutes
+            maxStoragePoints: 2016, // 7 days * 24 hours * 12 (5-min intervals)
+            alertThresholdDefault: 45
+        };
+
+        const AIRPORT_DATA = {
+            AUS: { name: 'Austin Bergstrom', code: 'AUS', baseWaitTime: 18 },
+            DAL: { name: 'Dallas/Fort Worth', code: 'DAL', baseWaitTime: 22 },
+            HOU: { name: 'Houston Hobby', code: 'HOU', baseWaitTime: 16 },
+            SAT: { name: 'San Antonio', code: 'SAT', baseWaitTime: 12 }
+        };
+
+        // ============================================================================
+        // Storage Manager
+        // ============================================================================
+        class StorageManager {
+            constructor() {
+                this.init();
+            }
+
+            init() {
+                if (!localStorage.getItem('tsa_settings')) {
+                    localStorage.setItem('tsa_settings', JSON.stringify({
+                        darkMode: false,
+                        alertsEnabled: true,
+                        alertThreshold: CONFIG.alertThresholdDefault,
+                        lastRefresh: null
+                    }));
+                }
+            }
+
+            getData(airport = 'AUS') {
+                const key = `tsa_data_${airport}`;
+                const data = localStorage.getItem(key);
+                return data ? JSON.parse(data) : [];
+            }
+
+            addDataPoint(airport, waitTime) {
+                const key = `tsa_data_${airport}`;
+                let data = this.getData(airport);
+                
+                data.push({
+                    timestamp: Date.now(),
+                    waitTime: waitTime,
+                    hour: new Date().getHours()
+                });
+
+                // Keep only recent data
+                if (data.length > CONFIG.maxStoragePoints) {
+                    data = data.slice(-CONFIG.maxStoragePoints);
+                }
+
+                localStorage.setItem(key, JSON.stringify(data));
+                return data;
+            }
+
+            getSettings() {
+                return JSON.parse(localStorage.getItem('tsa_settings') || '{}');
+            }
+
+            saveSettings(settings) {
+                const current = this.getSettings();
+                localStorage.setItem('tsa_settings', JSON.stringify({ ...current, ...settings }));
+            }
+        }
+
+        // ============================================================================
+        // Data Generator (Realistic Simulation)
+        // ============================================================================
+        class DataGenerator {
+            static generateWaitTime(hour) {
+                const now = new Date();
+                const minute = now.getMinutes();
+                
+                // Base pattern: slower early morning, peaks 8-11am, slower afternoon, picks up evening
+                let baseWait = 15;
+                
+                if (hour < 5) baseWait = 8; // Before 5am - slow
+                else if (hour >= 5 && hour < 8) baseWait = 15; // 5-8am - building
+                else if (hour >= 8 && hour < 12) baseWait = 35; // 8am-12pm - PEAK
+                else if (hour >= 12 && hour < 16) baseWait = 22; // 12-4pm - moderate
+                else if (hour >= 16 && hour < 18) baseWait = 28; // 4-6pm - busy
+                else if (hour >= 18 && hour < 22) baseWait = 25; // 6-10pm - moderate
+                else baseWait = 12; // 10pm+ - slow
+                
+                // Add randomness (±10% with slight trends)
+                const variation = baseWait * 0.1 * (Math.random() - 0.5);
+                const trend = Math.sin((minute / 60) * Math.PI) * 2; // Slight drift within hour
+                
+                return Math.max(5, Math.round(baseWait + variation + trend));
+            }
+
+            static generateHistoricalData(airport) {
+                const storage = new StorageManager();
+                const existing = storage.getData(airport);
+                
+                if (existing.length > 100) return existing; // Use existing data
+                
+                // Generate 7 days of historical data
+                const data = [];
+                const now = Date.now();
+                const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+                
+                for (let i = 0; i < 2016; i++) { // ~7 days at 5-min intervals
+                    const timestamp = now - (2016 - i) * 5 * 60 * 1000;
+                    const date = new Date(timestamp);
+                    const hour = date.getHours();
+                    const waitTime = this.generateWaitTime(hour);
+                    
+                    data.push({
+                        timestamp: timestamp,
+                        waitTime: waitTime,
+                        hour: hour
+                    });
+                }
+                
+                localStorage.setItem(`tsa_data_${airport}`, JSON.stringify(data));
+                return data;
+            }
+        }
+
+        // ============================================================================
+        // UI Manager
+        // ============================================================================
+        class UIManager {
+            static displayCurrentStatus() {
+                const storage = new StorageManager();
+                const airport = CONFIG.currentAirport;
+                const data = storage.getData(airport);
+                
+                if (data.length === 0) {
+                    document.getElementById('currentWaitTime').textContent = '—';
+                    return;
+                }
+
+                const current = data[data.length - 1];
+                const waitTime = current.waitTime;
+                const hour = new Date().getHours();
+                
+                // Update wait time display
+                const element = document.getElementById('currentWaitTime');
+                element.textContent = `${waitTime} min`;
+                element.className = `wait-time-number ${this.getSeverityClass(waitTime)}`;
+                
+                // Update time period
+                const timePeriod = this.getTimePeriod(hour);
+                document.getElementById('timePeriod').textContent = timePeriod;
+                
+                // Update severity indicator
+                const severity = this.getSeverityLabel(waitTime);
+                document.getElementById('severityIndicator').innerHTML = 
+                    `<span>${this.getSeverityEmoji(waitTime)} ${severity}</span>`;
+                
+                // Update trend
+                this.displayTrend(data);
+                
+                // Update last updated time
+                const lastUpdate = new Date(current.timestamp);
+                document.getElementById('lastUpdated').innerHTML = 
+                    `<span>Updated ${this.formatTime(lastUpdate)}</span>`;
+                document.getElementById('footerTime').textContent = this.formatTime(lastUpdate);
+                
+                // Check alerts
+                this.checkAlerts(waitTime);
+            }
+
+            static displayTrend(data) {
+                if (data.length < 2) return;
+                
+                // Get data from last 4 hours
+                const fourHoursAgo = Date.now() - (4 * 60 * 60 * 1000);
+                const recent = data.filter(d => d.timestamp >= fourHoursAgo);
+                
+                if (recent.length < 2) return;
+                
+                const first = recent[0].waitTime;
+                const last = recent[recent.length - 1].waitTime;
+                const diff = last - first;
+                
+                let trendHTML = '';
+                if (Math.abs(diff) <= 2) {
+                    trendHTML = `<span class="trend stable">→ Stable</span>`;
+                } else if (diff > 0) {
+                    trendHTML = `<span class="trend up">↑ Increasing (+${diff} min)</span>`;
+                } else {
+                    trendHTML = `<span class="trend down">↓ Decreasing (${diff} min)</span>`;
+                }
+                
+                document.getElementById('trendIndicator').innerHTML = trendHTML;
+                
+                // Create 4-hour chart
+                this.create4HourChart(recent);
+            }
+
+            static create4HourChart(data) {
+                const ctx = document.getElementById('chart4h').getContext('2d');
+                
+                if (window.chart4h && typeof window.chart4h.destroy === 'function') {
+                    window.chart4h.destroy();
+                }
+                
+                const labels = data.map(d => {
+                    const time = new Date(d.timestamp);
+                    return time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                });
+                
+                const waitTimes = data.map(d => d.waitTime);
+                
+                window.chart4h = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Wait Time (minutes)',
+                            data: waitTimes,
+                            borderColor: '#0066cc',
+                            backgroundColor: 'rgba(0, 102, 204, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#0066cc',
+                            pointBorderColor: 'white',
+                            pointBorderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 60,
+                                ticks: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                                },
+                                grid: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                                },
+                                grid: {
+                                    color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            static displayWeeklyHistory() {
+                const storage = new StorageManager();
+                const data = storage.getData(CONFIG.currentAirport);
+                
+                const container = document.getElementById('weeklyHistoryContainer');
+                container.innerHTML = '';
+                
+                // Group data by day
+                const dayMap = {};
+                const now = new Date();
+                const currentHour = now.getHours();
+                
+                // Initialize last 7 days
+                for (let i = 6; i >= 0; i--) {
+                    const date = new Date(now);
+                    date.setDate(date.getDate() - i);
+                    date.setHours(currentHour, 0, 0, 0);
+                    const key = date.toDateString();
+                    dayMap[key] = { waitTime: null, timestamp: date.getTime() };
+                }
+                
+                // Find wait time closest to current hour for each day
+                data.forEach(point => {
+                    const date = new Date(point.timestamp);
+                    const dayKey = date.toDateString();
+                    
+                    if (dayMap[dayKey]) {
+                        // Keep the closest to current hour
+                        if (!dayMap[dayKey].waitTime || 
+                            Math.abs(date.getHours() - currentHour) < 2) {
+                            dayMap[dayKey].waitTime = point.waitTime;
+                        }
+                    }
+                });
+                
+                // Display days
+                Object.keys(dayMap).sort().forEach((dayKey) => {
+                    const date = new Date(dayKey);
+                    const record = dayMap[dayKey];
+                    const waitTime = record.waitTime || 'N/A';
+                    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                    const dateStr = date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                    
+                    const severityClass = typeof waitTime === 'number' ? 
+                        UIManager.getSeverityClass(waitTime) : '';
+                    
+                    const html = `
+                        <div class="day-item">
+                            <div>
+                                <div class="day-label">${dayName} ${dateStr}</div>
+                                <div class="day-time">${currentHour}:00 local time</div>
+                            </div>
+                            <div class="day-wait-time ${severityClass}">
+                                ${typeof waitTime === 'number' ? waitTime + ' min' : waitTime}
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += html;
+                });
+            }
+
+            static displayPeakAnalysis() {
+                const storage = new StorageManager();
+                const data = storage.getData(CONFIG.currentAirport);
+                
+                let peakHour = 10;
+                let peakWait = 0;
+                let peakDay = 'Friday';
+                let peakDayWait = 0;
+                let avgWait = 22;
+                
+                if (data && data.length > 0) {
+                    // Peak hour analysis
+                    const hourlyAverages = {};
+                    data.forEach(point => {
+                        const hour = point.hour !== undefined ? point.hour : new Date(point.timestamp).getHours();
+                        if (!hourlyAverages[hour]) hourlyAverages[hour] = [];
+                        hourlyAverages[hour].push(point.waitTime);
+                    });
+                    
+                    Object.keys(hourlyAverages).forEach(hour => {
+                        const avg = hourlyAverages[hour].reduce((a, b) => a + b) / hourlyAverages[hour].length;
+                        if (avg > peakWait) {
+                            peakWait = avg;
+                            peakHour = parseInt(hour);
+                        }
+                    });
+                    
+                    // Peak day analysis
+                    const dailyAverages = {};
+                    data.forEach(point => {
+                        const date = new Date(point.timestamp);
+                        const dayKey = date.toLocaleDateString('en-US', { weekday: 'short' });
+                        if (!dailyAverages[dayKey]) dailyAverages[dayKey] = [];
+                        dailyAverages[dayKey].push(point.waitTime);
+                    });
+                    
+                    Object.keys(dailyAverages).forEach(day => {
+                        const avg = dailyAverages[day].reduce((a, b) => a + b) / dailyAverages[day].length;
+                        if (avg > peakDayWait) {
+                            peakDayWait = avg;
+                            peakDay = day;
+                        }
+                    });
+                    
+                    // Average wait time
+                    avgWait = data.reduce((a, b) => a + b.waitTime, 0) / data.length;
+                }
+                
+                document.getElementById('peakHour').textContent = `${String(peakHour).padStart(2, '0')}:00`;
+                document.getElementById('peakHourWait').textContent = `Avg: ${Math.round(peakWait)} min`;
+                document.getElementById('peakDay').textContent = peakDay;
+                document.getElementById('peakDayWait').textContent = `Avg: ${Math.round(peakDayWait)} min`;
+                document.getElementById('avgWaitTime').textContent = `${Math.round(avgWait)} min`;
+            }
+
+            static getSeverityClass(waitTime) {
+                if (waitTime <= 15) return 'green';
+                if (waitTime <= 30) return 'yellow';
+                return 'red';
+            }
+
+            static getSeverityLabel(waitTime) {
+                if (waitTime <= 15) return 'Short Wait';
+                if (waitTime <= 30) return 'Moderate Wait';
+                if (waitTime <= 45) return 'Long Wait';
+                return 'Very Long Wait';
+            }
+
+            static getSeverityEmoji(waitTime) {
+                if (waitTime <= 15) return '🟢';
+                if (waitTime <= 30) return '🟡';
+                return '🔴';
+            }
+
+            static getTimePeriod(hour) {
+                if (hour < 5) return 'Early Morning (Slow)';
+                if (hour < 8) return 'Morning (Building)';
+                if (hour < 12) return 'Peak Hours 🚨';
+                if (hour < 16) return 'Afternoon (Moderate)';
+                if (hour < 18) return 'Late Afternoon (Busy)';
+                if (hour < 22) return 'Evening (Moderate)';
+                return 'Late Night (Slow)';
+            }
+
+            static formatTime(date) {
+                return date.toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    minute: '2-digit', 
+                    hour12: true 
+                });
+            }
+
+            static checkAlerts(waitTime) {
+                const settings = new StorageManager().getSettings();
+                if (!settings.alertsEnabled) return;
+                
+                if (waitTime > settings.alertThreshold) {
+                    const notification = document.getElementById('notification');
+                    notification.innerHTML = `
+                        ⚠️ Wait time is ${waitTime} minutes (above your ${settings.alertThreshold} min threshold)
+                    `;
+                    notification.classList.add('show');
+                    setTimeout(() => notification.classList.remove('show'), 5000);
+                }
+            }
+        }
+
+        // ============================================================================
+        // Main App Logic
+        // ============================================================================
+        function initApp() {
+            // Initialize data
+            DataGenerator.generateHistoricalData('AUS');
+            DataGenerator.generateHistoricalData('DAL');
+            DataGenerator.generateHistoricalData('HOU');
+            DataGenerator.generateHistoricalData('SAT');
+            
+            // Load settings
+            const storage = new StorageManager();
+            const settings = storage.getSettings();
+            document.getElementById('alertsEnabled').checked = settings.alertsEnabled;
+            document.getElementById('alertThreshold').value = settings.alertThreshold;
+            
+            if (settings.darkMode) {
+                document.body.classList.add('dark-mode');
+                document.getElementById('darkModeBtn').classList.add('active');
+            }
+            
+            // Ensure DOM is ready before updating
+            setTimeout(() => {
+                updateUI();
+            }, 100);
+            
+            // Auto-refresh
+            setInterval(() => {
+                const newWait = DataGenerator.generateWaitTime(new Date().getHours());
+                const storage = new StorageManager();
+                storage.addDataPoint(CONFIG.currentAirport, newWait);
+                updateUI();
+            }, CONFIG.dataRefreshInterval);
+        }
+
+        function updateUI() {
+            try {
+                UIManager.displayCurrentStatus();
+                UIManager.displayWeeklyHistory();
+                UIManager.displayPeakAnalysis();
+            } catch (e) {
+                console.error('UI update error:', e);
+            }
+        }
+
+        function refreshData() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Refreshing...';
+            
+            setTimeout(() => {
+                const newWait = DataGenerator.generateWaitTime(new Date().getHours());
+                const storage = new StorageManager();
+                storage.addDataPoint(CONFIG.currentAirport, newWait);
+                updateUI();
+                
+                btn.disabled = false;
+                btn.innerHTML = '🔄 Refresh';
+            }, 500);
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            const btn = document.getElementById('darkModeBtn');
+            btn.classList.toggle('active');
+            
+            const isDark = document.body.classList.contains('dark-mode');
+            const storage = new StorageManager();
+            storage.saveSettings({ darkMode: isDark });
+            
+            // Redraw chart with new colors
+            setTimeout(() => updateUI(), 100);
+        }
+
+        function saveSettings() {
+            const storage = new StorageManager();
+            storage.saveSettings({
+                alertsEnabled: document.getElementById('alertsEnabled').checked,
+                alertThreshold: parseInt(document.getElementById('alertThreshold').value)
+            });
+        }
+
+        function exportData() {
+            const storage = new StorageManager();
+            const data = storage.getData(CONFIG.currentAirport);
+            
+            if (data.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            let csv = 'timestamp,date,time,hour,waitTime\n';
+            data.forEach(point => {
+                const date = new Date(point.timestamp);
+                const dateStr = date.toLocaleDateString('en-US');
+                const timeStr = date.toLocaleTimeString('en-US');
+                csv += `${point.timestamp},${dateStr},${timeStr},${point.hour},${point.waitTime}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `AUS-TSA-WaitTimes-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
